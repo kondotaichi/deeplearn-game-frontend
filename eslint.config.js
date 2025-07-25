@@ -1,7 +1,7 @@
-// eslint.config.js
-const { FlatCompat } = require("@eslint/eslintrc");
-const { dirname } = require("path");
-const { fileURLToPath } = require("url");
+// eslint.config.mjs
+import { dirname } from "path";
+import { fileURLToPath } from "url";
+import { FlatCompat } from "@eslint/eslintrc";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -10,25 +10,21 @@ const compat = new FlatCompat({
   baseDirectory: __dirname,
 });
 
-module.exports = [
-  // すべての JS / TS / JSX / TSX ファイルをモジュールとしてパース
+export default [
+  // まずファイル種別とモジュール設定を登録
   {
-    files: ["**/*.[jt]s?(x)"],
+    files: ["**/*.js", "**/*.jsx", "**/*.ts", "**/*.tsx"],
     languageOptions: {
       ecmaVersion: "latest",
-      sourceType: "module",       // ← import を許可
-      parser: "@typescript-eslint/parser",
-      parserOptions: {
-        ecmaFeatures: { jsx: true },
-      },
+      sourceType: "module",   // ← これがないと import が構文エラーになる
     },
   },
-  // Next.js＋React＋TypeScript 向けの推奨設定を全部まとめ読み
+  // 続いて各種プリセットを読み込む
   ...compat.extends(
-    "eslint:recommended",
-    "plugin:react/recommended",
-    "next/core-web-vitals",
-    "next",
-    "next/typescript"
+    "eslint:recommended",        // JavaScript の基本ルール
+    "plugin:react/recommended",  // React 推奨ルール
+    "next/core-web-vitals",      // Next.js コアWebバイタル
+    "next",                      // Next.js の JS/TS 両対応設定
+    "next/typescript"            // TypeScript 用追加設定
   ),
 ];
