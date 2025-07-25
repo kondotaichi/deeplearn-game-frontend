@@ -5,7 +5,7 @@ import { useState, useContext, useRef } from 'react'
 import { AuthContext } from '../context/AuthContext'
 
 // WebSocket のベース URL
-const WS_BASE = process.env.NEXT_PUBLIC_BACKEND_WS_BASE || "ws://localhost:8000"
+const WS_BASE = process.env.NEXT_PUBLIC_BACKEND_WS || "ws://localhost:8000"
 
 export default function NotebookViewer({ notebook, courseId = 1 }) {
   if (!notebook || !Array.isArray(notebook.cells)) {
