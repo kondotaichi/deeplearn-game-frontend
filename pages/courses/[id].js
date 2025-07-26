@@ -1,5 +1,3 @@
-// pages/courses/[id].js
-
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import { onAuthStateChanged } from 'firebase/auth'
@@ -13,13 +11,17 @@ export default function NotebookPage() {
   const [token, setToken] = useState(null)
   const [notebook, setNotebook] = useState(null)
   const [error, setError] = useState(null)
-  const [ws, setWs] = useState(null)      // ← ref ではなく state
+  const [ws, setWs] = useState(null)
 
   // Firebase トークン取得
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
-      if (u) setToken(await u.getIdToken())
-      else router.push('/login')
+      if (u) {
+        const t = await u.getIdToken()
+        setToken(t)
+      } else {
+        router.push('/login')
+      }
     })
     return () => unsub()
   }, [router])
@@ -27,40 +29,53 @@ export default function NotebookPage() {
   // ノートブック取得
   useEffect(() => {
     if (!id || !token) return
-    const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+    const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
+
     fetch(`${BACKEND}/api/v1/courses/${id}/notebook`, {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${token}` },
     })
-      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then((res) => (res.ok ? res.json() : Promise.reject(res.status)))
       .then(setNotebook)
       .catch(() => setError('ノートブック取得失敗'))
   }, [id, token])
 
-  // WebSocket 初期化（ノートブック取得後に一度だけ）
+  // WebSocket 接続
   useEffect(() => {
     if (!notebook || !token || ws) return
 
-    const socket = new WebSocket(
-      `ws://localhost:8000/api/v1/ws/jupyter/${id}?token=${token}`
-    )
-    socket.onopen = () => {
-      console.log('WebSocket opened')
-      setWs(socket)   // ← state にセットして再レンダー
-    }
-    socket.onerror = (e) => console.error('WebSocket error', e)
-    socket.onclose = () => console.log('WebSocket closed')
+    const WS_BACKEND = process.env.NEXT_PUBLIC_BACKEND_WS || 'ws://localhost:8000'
+    const socket = new WebSocket(`${WS_BACKEND}/api/v1/ws/jupyter/${id}?token=${token}`)
 
-    return () => socket.close()
+    socket.onopen = () => {
+      console.log('WebSocket 接続完了')
+      setWs(socket)
+    }
+
+    socket.onerror = (e) => {
+      console.error('WebSocket 接続エラー', e)
+      setError('WebSocket接続失敗')
+    }
+
+    socket.onclose = () => {
+      console.log('WebSocket 接続終了')
+    }
+
+    return () => {
+      socket.close()
+    }
   }, [notebook, id, token, ws])
 
   if (error) return <div style={{ color: 'red' }}>{error}</div>
-  if (!notebook) return <div>読み込み中…</div>
+  if (!notebook) return <div>ノートブックを読み込み中...</div>
 
   return (
     <div style={{ padding: 16 }}>
       <h1>講座 {id} のノートブック</h1>
-      {/* ws が null のときはまだ接続中、ws が入ってからレンダリング */}
-      <NotebookViewer notebook={notebook} ws={ws} />
+      {ws ? (
+        <NotebookViewer notebook={notebook} ws={ws} />
+      ) : (
+        <div>WebSocket接続中...</div>
+      )}
     </div>
   )
 }
