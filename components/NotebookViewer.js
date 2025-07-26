@@ -4,9 +4,6 @@ import { materialDark } from 'react-syntax-highlighter/dist/cjs/styles/prism'
 import { useState, useContext, useRef } from 'react'
 import { AuthContext } from '../context/AuthContext'
 
-// WebSocket のベース URL
-const WS_BASE = process.env.NEXT_PUBLIC_BACKEND_WS || "ws://localhost:8000"
-
 export default function NotebookViewer({ notebook, courseId = 1 }) {
   if (!notebook || !Array.isArray(notebook.cells)) {
     return <div>読み込み中…</div>
@@ -14,18 +11,34 @@ export default function NotebookViewer({ notebook, courseId = 1 }) {
   return (
     <div>
       {notebook.cells.map((cell, i) => (
-        <Cell key={i} cell={cell} index={i} courseId={courseId} />
+        <Cell key={i} cell={cell} courseId={courseId} />
       ))}
     </div>
   )
 }
 
-function Cell({ cell, index, courseId }) {
+function Cell({ cell, courseId }) {
   const [outputs, setOutputs] = useState([])
   const [isLoading, setIsLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState("")
   const { user } = useContext(AuthContext)
   const wsRef = useRef(null)
+
+  // WebSocket ベース URL を取得するヘルパー
+  const getWSBase = () => {
+    // 1) 環境変数があればそれを使う
+    if (process.env.NEXT_PUBLIC_BACKEND_WS) {
+      return process.env.NEXT_PUBLIC_BACKEND_WS
+    }
+    // 2) ブラウザ上なら現在のオリジンから組み立て
+    if (typeof window !== 'undefined') {
+      const { protocol, host } = window.location
+      const wsProto = protocol === 'https:' ? 'wss:' : 'ws:'
+      return `${wsProto}//${host}`
+    }
+    // 3) フォールバック
+    return 'ws://localhost:8000'
+  }
 
   const handleRun = async () => {
     if (!user) {
@@ -50,13 +63,14 @@ function Cell({ cell, index, courseId }) {
       return
     }
 
-    // WebSocket を開く
-    const ws = new WebSocket(`${WS_BASE}/api/v1/ws/jupyter/${courseId}?token=${idToken}`)
+    // ベース URL を取得して on-the-fly で接続
+    const base = getWSBase()
+    const ws = new WebSocket(
+      `${base}/api/v1/ws/jupyter/${courseId}?token=${idToken}`
+    )
     wsRef.current = ws
 
     ws.onopen = () => {
-      // 最小限の execute_request を送ると、バックエンドで
-      // 正しい Jupyter プロトコルにラップしてくれます
       ws.send(JSON.stringify({
         header: { msg_type: 'execute_request' },
         parent_header: {},
@@ -66,33 +80,23 @@ function Cell({ cell, index, courseId }) {
     }
 
     ws.onmessage = (e) => {
-      // まずは中身を確認
-      console.log('WS ←', e.data)
       let msg
       try {
         msg = JSON.parse(e.data)
       } catch {
-        console.warn('非 JSON メッセージ', e.data)
         return
       }
-
-      // stream: print() の出力
       if (msg.header?.msg_type === 'stream') {
         setOutputs(o => [...o, msg.content.text])
       }
-      // execute_result: return value の出力
       else if (msg.header?.msg_type === 'execute_result') {
-        const txt = msg.content.data['text/plain']
-        setOutputs(o => [...o, txt])
+        setOutputs(o => [...o, msg.content.data['text/plain']])
       }
-      // error: 例外
       else if (msg.header?.msg_type === 'error') {
         setOutputs(o => [...o, `[ERROR] ${msg.content.ename}: ${msg.content.evalue}`])
       }
-      // execute_reply: 実行完了
       else if (msg.header?.msg_type === 'execute_reply') {
         setIsLoading(false)
-        // execution_time があれば表示
         if (msg.execution_time != null) {
           setOutputs(o => [...o, `[実行時間: ${msg.execution_time}s]`])
         }
@@ -111,7 +115,6 @@ function Cell({ cell, index, courseId }) {
     }
   }
 
-  // code セルだけ実行可能
   if (cell.cell_type === 'markdown') {
     return <ReactMarkdown>{cell.source.join('')}</ReactMarkdown>
   }
