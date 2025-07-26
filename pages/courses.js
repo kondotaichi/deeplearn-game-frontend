@@ -22,7 +22,8 @@ export default function CoursesPage() {
       ;(async () => {
         try {
           const token = await user.getIdToken()
-          const res = await fetch('http://localhost:8000/api/v1/courses', {
+          const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+          const res = await fetch(`${BACKEND}/api/v1/courses`, {
             headers: { Authorization: `Bearer ${token}` }
           })
           if (!res.ok) throw new Error(`HTTP ${res.status}`)

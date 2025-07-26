@@ -27,7 +27,8 @@ export default function NotebookPage() {
   // ノートブック取得
   useEffect(() => {
     if (!id || !token) return
-    fetch(`http://localhost:8000/api/v1/courses/${id}/notebook`, {
+    const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+    fetch(`${BACKEND}/api/v1/courses/${id}/notebook`, {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then(r => r.ok ? r.json() : Promise.reject(r.status))

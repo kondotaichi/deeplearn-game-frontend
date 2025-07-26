@@ -22,7 +22,8 @@ export default function Login() {
         const idToken = await user.getIdToken();
 
         // バックエンドAPIを叩いて認証を確認
-        const res = await fetch('http://localhost:8000/api/v1/auth/me', { // バックエンドのURL
+        const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+        const res = await fetch(`${BACKEND}/api/v1/auth/me`, {
           headers: {
             'Authorization': `Bearer ${idToken}`
           }
