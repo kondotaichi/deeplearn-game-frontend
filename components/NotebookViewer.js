@@ -1,6 +1,8 @@
 import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { materialDark } from 'react-syntax-highlighter/dist/cjs/styles/prism'
+import CodeMirror from '@uiw/react-codemirror';
+import { python } from '@codemirror/lang-python';
 import { useState, useContext, useRef, useEffect } from 'react'
 import { AuthContext } from '../context/AuthContext'
 
@@ -58,76 +60,66 @@ export default function NotebookViewer({ notebook, courseId = 1 }) {
   )
 }
 
-function Cell({ cell, courseId, wsRef, token }) {
-  const [outputs, setOutputs] = useState([])
-  const [isLoading, setIsLoading] = useState(false)
-  const [errorMsg, setErrorMsg] = useState("")
+
+function Cell({ cell, onRun }) {
+  // 1. セルのコードを編集可能なstateとして保持
+  const [code, setCode] = useState(cell.source.join(''));
+  const [outputs, setOutputs] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const { user } = useContext(AuthContext);
 
   const handleRun = () => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      setErrorMsg("WebSocketが接続されていません")
-      return
-    }
-    setIsLoading(true)
-    setOutputs([])
-    setErrorMsg("")
+    setIsLoading(true);
+    setOutputs([]);
+    // 2. onRunに渡すコードを、編集後のstate (`code`) に変更
+    onRun(code, (outputMessage) => {
+      // 実行結果や完了通知を受け取ってstateを更新する
+      setOutputs(prev => [...prev, outputMessage]);
 
-    const msg = {
-      header: { msg_type: 'execute_request', metadata: { courseId } },
-      parent_header: {},
-      metadata: {},
-      content: { code: cell.source.join(''), silent: false },
-    }
-    wsRef.current.send(JSON.stringify(msg))
-
-    const onMessage = (e) => {
-      let msg
-      try { msg = JSON.parse(e.data) } catch { return }
-      const mtype = msg.header?.msg_type
-      if (mtype === 'stream') {
-        setOutputs(o => [...o, msg.content.text])
-      } else if (mtype === 'execute_result') {
-        setOutputs(o => [...o, msg.content.data['text/plain']])
-      } else if (mtype === 'error') {
-        setOutputs(o => [...o, `[ERROR] ${msg.content.ename}: ${msg.content.evalue}`])
-      } else if (mtype === 'execute_reply') {
-        setIsLoading(false)
-        if (msg.execution_time != null) {
-          setOutputs(o => [...o, `[実行時間: ${msg.execution_time}s]`])
-        }
-        wsRef.current.removeEventListener('message', onMessage)
+      if (outputMessage.type === 'final') {
+          setIsLoading(false);
       }
-    }
-
-    wsRef.current.addEventListener('message', onMessage)
-  }
+    });
+  };
 
   if (cell.cell_type === 'markdown') {
-    return <ReactMarkdown>{cell.source.join('')}</ReactMarkdown>
+    return <ReactMarkdown>{cell.source.join('')}</ReactMarkdown>;
   }
+
   if (cell.cell_type === 'code') {
     return (
       <div style={{ margin: '20px 0' }}>
-        <SyntaxHighlighter language="python" style={materialDark}>
-          {cell.source.join('')}
-        </SyntaxHighlighter>
+        {/* 3. SyntaxHighlighterをCodeMirrorに置き換え */}
+        <CodeMirror
+          value={code}
+          height="auto"
+          extensions={[python()]}
+          onChange={(value) => setCode(value)}
+          theme="dark" // ダークテーマを適用
+        />
         <button
           onClick={handleRun}
-          disabled={isLoading || !token}
+          disabled={isLoading || !user}
           style={{ marginTop: 10 }}
         >
           {isLoading ? '実行中…' : '実行'}
         </button>
         <div style={{ marginTop: 10 }}>
           {outputs.map((o, i) => (
-            <pre key={i} style={{ whiteSpace: 'pre-wrap', color: o.startsWith("[ERROR]") ? 'red' : undefined }}>
+            <pre
+              key={i}
+              style={{
+                whiteSpace: 'pre-wrap',
+                color: o.startsWith("[ERROR]") ? 'red' : undefined
+              }}
+            >
               {o}
             </pre>
           ))}
-          {errorMsg && <div style={{ color: 'red' }}>{errorMsg}</div>}
         </div>
       </div>
-    )
+    );
   }
-  return null
+
+  return null;
 }
